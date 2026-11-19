@@ -172,6 +172,15 @@ async function createRoom(){
     await openRoom();
   }catch(error){toast(friendlyError(error));button.disabled=false;}
 }
+function clearRoomInviteParam(){
+  try{
+    const url=new URL(location.href);
+    if(!url.searchParams.has("room"))return;
+    url.searchParams.delete("room");
+    const query=url.searchParams.toString();
+    history.replaceState(history.state,"",url.pathname+(query?"?"+query:"")+url.hash);
+  }catch(error){console.warn("Invite URL cleanup:",error);}
+}
 async function joinRoomByCode(code){
   if(!requireNetworkProfile())return false;
   if(!/^[A-Z0-9]{6}$/.test(code)){toast("Код приглашения должен содержать шесть символов.");return false;}
@@ -179,9 +188,10 @@ async function joinRoomByCode(code){
     const data=await rpc("qq_party_join_room",{p_code:code,p_nickname:state.profile.username});
     state.roomId=data.room_id;state.roomCode=data.code;
     localStorage.setItem("qq-draw-room",state.roomId);
+    clearRoomInviteParam();
     await openRoom();
     return true;
-  }catch(error){toast(friendlyError(error));return false;}
+  }catch(error){clearRoomInviteParam();toast(friendlyError(error));return false;}
 }
 async function joinRoom(event){
   event.preventDefault();if(!requireNetworkProfile())return;
