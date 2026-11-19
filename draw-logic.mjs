@@ -36,6 +36,16 @@ export function chooseLocalBotGuess({ words = DRAW_WORDS, previous = [], rng = M
   return choices[Math.min(choices.length - 1, Math.floor(rng() * choices.length))];
 }
 
+function stableSerialize(value) {
+  if (Array.isArray(value)) return "[" + value.map(stableSerialize).join(",") + "]";
+  if (value && typeof value === "object") {
+    return "{" + Object.keys(value).sort().map((key) =>
+      JSON.stringify(key) + ":" + stableSerialize(value[key])
+    ).join(",") + "}";
+  }
+  return JSON.stringify(value);
+}
+
 export function appendOrderedEvent(events, event) {
   const sequence = Number(event?.sequence);
   if (!Number.isSafeInteger(sequence) || sequence < 1) {
@@ -45,9 +55,9 @@ export function appendOrderedEvent(events, event) {
   if (existing) {
     return {
       events,
-      accepted: JSON.stringify(existing) === JSON.stringify(event),
+      accepted: stableSerialize(existing) === stableSerialize(event),
       duplicate: true,
-      reason: JSON.stringify(existing) === JSON.stringify(event) ? null : "SEQUENCE_CONFLICT"
+      reason: stableSerialize(existing) === stableSerialize(event) ? null : "SEQUENCE_CONFLICT"
     };
   }
   const last = events.reduce((max,item) => Math.max(max,Number(item.sequence)||0),0);
