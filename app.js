@@ -183,7 +183,7 @@ function clearRoomInviteParam(){
 }
 async function joinRoomByCode(code){
   if(!requireNetworkProfile())return false;
-  if(!/^[A-Z0-9]{6}$/.test(code)){toast("Код приглашения должен содержать шесть символов.");return false;}
+  if(!/^[A-Z0-9]{6}$/.test(code)){clearRoomInviteParam();toast("Код приглашения должен содержать шесть символов.");return false;}
   try{
     const data=await rpc("qq_party_join_room",{p_code:code,p_nickname:state.profile.username});
     state.roomId=data.room_id;state.roomCode=data.code;
