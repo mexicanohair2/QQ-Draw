@@ -345,7 +345,7 @@ function setupCanvas(){
   const width=Math.max(1,Math.round(bounds.width*dpr)),height=Math.max(1,Math.round(bounds.height*dpr));
   if(canvas.width!==width||canvas.height!==height){canvas.width=width;canvas.height=height;}
   renderCanvas();
-  if(state.solo?.mode==="bot_draws"&&!state.solo.drawn){drawBotSketch(state.solo.word);state.solo.drawn=true;}
+  if(state.solo?.mode==="bot_draws"){drawBotSketch(state.solo.word);state.solo.drawn=true;}
   if(isArtist()||(state.solo?.mode==="user_draws"))attachDrawing(canvas);
 }
 function context(){
@@ -373,7 +373,7 @@ function canvasPoint(event,canvas){
   return {x:Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),y:Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))};
 }
 function localCanDraw(){
-  return Boolean((state.solo?.mode==="user_draws")||(!state.solo&&state.room?.status==="playing"&&isArtist()));
+  return Boolean((state.solo?.mode==="user_draws"&&state.solo.status==="playing")||(!state.solo&&state.room?.status==="playing"&&isArtist()));
 }
 function attachDrawing(canvas){
   if(canvas.dataset.bound==="1")return;
@@ -512,7 +512,8 @@ async function finishSoloGuess(event){
 }
 function startBotArtistSolo(){
   stopWatch();stopSolo();
-  const word=DRAW_WORDS[Math.floor(Math.random()*DRAW_WORDS.length)];
+  const sketches=["арбуз","солнце","рыба","кошка","машина","пицца","велосипед","домино"];
+  const word=sketches[Math.floor(Math.random()*sketches.length)];
   state.room=null;state.roomId=null;state.screen="solo";
   state.drawEvents=[];state.lastServerSequence=0;state.nextSequence=1;state.activeStrokeId=null;
   state.solo={mode:"bot_draws",word,guesses:[],status:"playing",drawn:false,round:1};
