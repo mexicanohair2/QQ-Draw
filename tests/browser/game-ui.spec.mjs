@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, devices } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
   const supabaseStub = `
@@ -61,4 +61,32 @@ test("player can draw with a mouse on the local solo canvas", async ({ page }) =
   expect(await countInk(page)).toBeGreaterThan(before + 2);
   await expect(page.locator("#brush")).toBeVisible();
   await expect(page.locator("#eraser")).toBeVisible();
+});
+
+test("QQ Draw accepts a touch pointer on a Pixel-sized canvas", async ({ browser }) => {
+  const context = await browser.newContext({ ...devices["Pixel 7"] });
+  const page = await context.newPage();
+  const supabaseStub = `
+    window.supabase = {
+      createClient() {
+        return { auth: { getSession: async () => ({ data: { session: null }, error: null }) } };
+      }
+    };
+  `;
+  await page.route(/https:\/\/(cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js|unpkg\.com\/@supabase\/supabase-js)/, route =>
+    route.fulfill({ status: 200, contentType: "application/javascript", body: supabaseStub })
+  );
+  await page.goto("/");
+  await page.locator("#drawForBots").click();
+  await page.locator("#soloWord").fill("арбуз");
+  await page.locator("#soloSetupForm button[type=submit]").click();
+
+  const canvas = page.locator("#drawCanvas");
+  await expect(canvas).toBeVisible();
+  const before = await countInk(page);
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.touchscreen.tap(box.x + box.width * 0.5, box.y + box.height * 0.5);
+  expect(await countInk(page)).toBeGreaterThan(before);
+  await context.close();
 });
