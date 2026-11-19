@@ -525,10 +525,19 @@ async function drainDrawQueue(){
   try{
     while(state.drawQueue.length){
       const payload=state.drawQueue[0];
-      await rpc("qq_party_add_stroke",{p_room_id:state.roomId,p_stroke:payload});
-      state.drawQueue.shift();
-      state.lastServerSequence=Math.max(state.lastServerSequence,Number(payload.sequence));
-      persistDrawQueue();
+      const sendingRoomId=state.roomId;
+      const sendingRoundId=payload.roundId;
+      if(sendingRoundId!==currentRoundId()){
+        if(state.drawQueue[0]===payload)state.drawQueue.shift();
+        persistDrawQueue();
+        continue;
+      }
+      await rpc("qq_party_add_stroke",{p_room_id:sendingRoomId,p_stroke:payload});
+      if(state.roomId===sendingRoomId&&currentRoundId()===sendingRoundId){
+        if(state.drawQueue[0]===payload)state.drawQueue.shift();
+        state.lastServerSequence=Math.max(state.lastServerSequence,Number(payload.sequence));
+        persistDrawQueue();
+      }
     }
   }catch(error){
     state.drawBlocked=true;
