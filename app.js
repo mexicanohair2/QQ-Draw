@@ -260,8 +260,10 @@ async function leaveRoom(){
   if(!state.roomId)return;
   try{await rpc("qq_party_leave_room",{p_room_id:state.roomId});}
   catch(error){console.warn("QQ Draw leave:",error);}
+  removeDrawOutbox(state.roomId,state.room?.round_no);
   stopWatch();
   state.room=null;state.roomId=null;state.roomCode=null;state.drawEvents=[];state.drawQueue=[];
+  state.activeStrokeId=null;state.activeStrokePoint=null;state.activeStrokeStyle=null;
   localStorage.removeItem("qq-draw-room");
   renderHome();
 }
@@ -619,7 +621,8 @@ function startBotArtistSolo(){
   const sketches=["арбуз","солнце","рыба","кошка","машина","пицца","велосипед","домино"];
   const word=sketches[Math.floor(Math.random()*sketches.length)];
   state.room=null;state.roomId=null;state.screen="solo";
-  state.drawEvents=[];state.lastServerSequence=0;state.nextSequence=1;state.activeStrokeId=null;
+  state.drawEvents=[];state.lastServerSequence=0;state.nextSequence=1;
+  state.activeStrokeId=null;state.activeStrokePoint=null;state.activeStrokeStyle=null;
   state.solo={mode:"bot_draws",word,guesses:[],status:"playing",drawn:false,round:1};
   render();
 }
@@ -637,6 +640,7 @@ function renderSoloSetup(){
 }
 function startUserArtistSolo(word){
   stopSolo();stopWatch();state.room=null;state.roomId=null;state.drawEvents=[];state.lastServerSequence=0;state.nextSequence=1;state.activeStrokeId=null;
+  state.activeStrokeId=null;state.activeStrokePoint=null;state.activeStrokeStyle=null;
   state.solo={mode:"user_draws",word,guesses:[],status:"playing",round:1};
   scheduleBotGuess();render();
 }
