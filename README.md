@@ -38,3 +38,13 @@ RPC:
 `npm test` проверяет уникальность слов, работу локального бота, последовательности и восстановление холста. GitHub Actions запускает тесты до публикации Pages.
 
 Реальную работу двух и более телефонов нужно отдельно проверить с независимыми аккаунтами. Автоматические unit-тесты не подтверждают устойчивость Realtime при потере соединения.
+
+## GitHub Pages
+
+Перед первым запуском включи Pages для репозитория:
+
+1. Открой [Settings → Pages](https://github.com/mexicanohair2/QQ-Draw/settings/pages).
+2. В разделе **Build and deployment** выбери **Source: GitHub Actions**.
+3. Открой вкладку [Actions](https://github.com/mexicanohair2/QQ-Draw/actions) и повтори workflow **Test and deploy**.
+
+Workflow сперва запускает `node --check app.js` и `node --test`; публикация выполняется только после успешного тестового задания. Сейчас автоматические тесты проходят. GitHub блокирует создание Pages site из workflow-токена, пока источник Pages не выбран в настройках репозитория.
