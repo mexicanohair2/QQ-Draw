@@ -23,3 +23,8 @@ h1,h2,h3,p{margin-top:0}h2{font-size:21px;margin-bottom:3px}h3{font-size:14px;ma
 @media(max-width:430px){.app{padding-left:9px;padding-right:9px}.screen{gap:8px}.card{padding:11px}.canvas-wrap{height:56svh;flex-basis:56svh;min-height:220px}.guess-history{max-height:15svh}.btn{padding:10px 11px}.player-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-height:700px){.screen{gap:7px;padding-top:5px}.canvas-wrap{height:50svh;flex-basis:50svh;min-height:190px}.guess-history{max-height:12svh}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+.room-friend-row{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--line);min-width:0}
+.room-friend-row:last-child{border-bottom:0}
+.room-friend-name{flex:1;min-width:0;font-size:13px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.room-friend-row .avatar{width:32px;height:32px;border-radius:11px;font-size:17px}
+.room-friend-row .btn{min-height:38px;padding:7px 10px;font-size:11px}
