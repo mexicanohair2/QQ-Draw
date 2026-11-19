@@ -283,8 +283,8 @@ function historyMarkup(guesses=[]){
     '<div class="guess-row"><span class="avatar">'+avatar(g.avatar)+'</span><b>'+esc(g.nickname||"Игрок")+'</b><span>'+(g.correct?'<strong class="success">'+esc(g.word)+'</strong>':esc(g.word))+'</span></div>'
   ).join("");
 }
-function drawToolsMarkup(){
-  if(!isArtist())return "";
+function drawToolsMarkup(enabled = isArtist() && state.room?.status === "playing"){
+  if(!enabled)return "";
   return '<div class="tools">'+
     '<button class="tool-btn '+(!state.eraser?"active":"")+'" id="brush">Кисть</button>'+
     '<button class="tool-btn '+(state.eraser?"active":"")+'" id="eraser">Ластик</button>'+
@@ -305,8 +305,8 @@ function renderOnlineGame(){
     '<section class="screen"><header class="topbar"><div class="brand"><span class="logo">QQ</span><span>QQ DRAW</span></div><button class="btn ghost" id="leaveRoom">Выйти</button></header>'+
     '<section class="card stack">'+topMessage+
       '<div class="canvas-wrap"><canvas id="drawCanvas" aria-label="Игровой холст"></canvas><span class="canvas-label">'+(artist?"Твой холст": "Рисунок художника")+'</span></div>'+
-      drawToolsMarkup()+
-      (artist?'<div class="notice">Секретное слово: <strong>'+esc(room.private?.word||"")+'</strong>. Рисуй, не пиши буквы.</div>':'')+
+      drawToolsMarkup(artist&&!finished)+
+      (artist&&!finished?'<div class="notice">Секретное слово: <strong>'+esc(room.private?.word||"")+'</strong>. Рисуй, не пиши буквы.</div>':'')+
     '</section>'+
     '<section class="card stack"><div class="game-meta"><b>История догадок</b><span>'+guesses.length+'</span></div><div class="guess-history">'+historyMarkup(guesses)+'</div>'+
       (!finished&&!artist?'<form id="guessForm" class="guess-form"><input class="field" id="guessInput" maxlength="30" autocomplete="off" placeholder="Что нарисовано?" required><button class="btn primary" type="submit">Отправить</button></form>':"")+
@@ -459,7 +459,8 @@ async function syncDrawHistory(){
           payload:item.payload||{}
         };
         const result=appendOrderedEvent(state.drawEvents,event);
-        if(!result.accepted&& !result.duplicate){
+        if(result.duplicate&&!result.accepted)throw new Error("DRAW_SEQUENCE_CONFLICT");
+        if(!result.accepted&&!result.duplicate){
           if(result.reason==="SEQUENCE_GAP")throw new Error("DRAW_SEQUENCE_GAP");
           if(result.reason==="SEQUENCE_CONFLICT")throw new Error("DRAW_SEQUENCE_CONFLICT");
         }
