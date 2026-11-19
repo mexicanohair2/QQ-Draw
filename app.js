@@ -147,8 +147,10 @@ async function signIn(event){
     const {data,error}=await supabase.auth.signInWithPassword({email:$("#email").value.trim(),password:$("#password").value});
     if(error)throw error;
     await loadProfile(data.user.id);
-    if(requestedRoomCode) await joinRoomByCode(requestedRoomCode);
-    else { toast("Вход через QQCross выполнен."); render(); }
+    if(requestedRoomCode) {
+      const joined = await joinRoomByCode(requestedRoomCode);
+      if(!joined) render();
+    } else { toast("Вход через QQCross выполнен."); render(); }
   }catch(error){toast(friendlyError(error));}
   finally{button.disabled=false;button.textContent="Войти через QQCross";}
 }
