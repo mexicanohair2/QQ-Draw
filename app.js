@@ -16,7 +16,8 @@ const state = {
   color:"#29202b",thickness:5,eraser:false,
   drawEvents:[],lastServerSequence:0,nextSequence:1,drawRound:null,
   drawQueue:[],sendingDraw:false,drawBlocked:false,activeStrokeId:null,
-  lastMoveAt:0,solo:null,soloTimer:null,botTimer:null,screen:"home"
+  activeStrokePoint:null,activeStrokeStyle:null,lastMoveAt:0,
+  solo:null,soloTimer:null,botTimer:null,screen:"home"
 };
 
 const supabase = window.supabase?.createClient
@@ -186,6 +187,7 @@ async function openRoom(){
   try{
     await refreshRoom(false);
     await syncDrawHistory();
+    restorePendingDrawQueue();
     state.channel=supabase.channel("qq-draw-room-"+id)
       .on("postgres_changes",{event:"*",schema:"public",table:"qq_party_rooms",filter:"id=eq."+id},()=>refreshRoom())
       .on("postgres_changes",{event:"*",schema:"public",table:"qq_party_players",filter:"room_id=eq."+id},()=>refreshRoom())
@@ -209,10 +211,18 @@ async function refreshRoom(showErrors=true){
     const data=await rpc("qq_party_get_room",{p_room_id:state.roomId});
     const previousRound=state.room?.round_no;
     if(previousRound!==undefined&&previousRound!==data.round_no){
+      removeDrawOutbox(state.roomId,previousRound);
       state.drawRound=data.round_no;state.drawEvents=[];state.lastServerSequence=0;state.nextSequence=1;
+      state.drawQueue=[];state.drawBlocked=false;state.activeStrokeId=null;
+      state.activeStrokePoint=null;state.activeStrokeStyle=null;
     }
     const changed=JSON.stringify(data)!==JSON.stringify(state.room);
     state.room=data;state.roomCode=data.code;
+    if(data.status!=="playing"&&state.drawQueue.length){
+      state.drawQueue=[];state.drawBlocked=false;state.activeStrokeId=null;
+      state.activeStrokePoint=null;state.activeStrokeStyle=null;
+      removeDrawOutbox(state.roomId,data.round_no);
+    }
     if(changed)render();
     if(data.status!=="waiting")await syncDrawHistory();
   }catch(error){if(showErrors)console.warn("QQ Draw room refresh:",error);}
@@ -368,6 +378,24 @@ function renderCanvas(){
     ctx.stroke();
   }
 }
+function drawLocalSegment(from,to,style){
+  const canvas=getCanvas();if(!canvas)return;
+  const ctx=canvas.getContext("2d");if(!ctx)return;
+  const sx=canvas.width/Math.max(1,canvas.clientWidth);
+  const sy=canvas.height/Math.max(1,canvas.clientHeight);
+  ctx.save();
+  ctx.lineCap="round";ctx.lineJoin="round";
+  ctx.strokeStyle=style.color;
+  ctx.lineWidth=style.thickness*sx;
+  ctx.beginPath();
+  ctx.moveTo(from.x*canvas.width,from.y*canvas.height);
+  ctx.lineTo(to.x*canvas.width,to.y*canvas.height);
+  if(from.x===to.x&&from.y===to.y){
+    ctx.lineTo(to.x*canvas.width+0.2*sx,to.y*canvas.height+0.2*sy);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
 function canvasPoint(event,canvas){
   const rect=canvas.getBoundingClientRect();
   return {x:Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),y:Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))};
@@ -410,21 +438,87 @@ function currentRoundId(){
 function sendDrawEvent(type,point,strokeId){
   const sequence=state.nextSequence++;
   const userId=state.profile?.id||"solo-player";
-  const color=state.eraser?"#f7f4f1":state.color;
+  if(type==="begin"){
+    state.activeStrokeStyle={
+      color:state.eraser?"#f7f4f1":state.color,
+      thickness:Math.max(1,Math.min(32,Number(state.thickness)||5))
+    };
+  }
+  const style=state.activeStrokeStyle||{
+    color:state.eraser?"#f7f4f1":state.color,
+    thickness:Math.max(1,Math.min(32,Number(state.thickness)||5))
+  };
   const payload={
     roundId:currentRoundId(),playerId:userId,type,sequence,strokeId,
     x:Number(point.x.toFixed(5)),y:Number(point.y.toFixed(5)),
-    color,thickness:Math.max(1,Math.min(32,Number(state.thickness)||5))
+    color:style.color,thickness:style.thickness
   };
   const event={roundId:payload.roundId,playerId:userId,type,sequence,strokeId,payload};
   state.drawEvents.push(event);
-  renderCanvas();
+  const from=type==="begin"?point:(state.activeStrokePoint||point);
+  drawLocalSegment(from,point,style);
+  state.activeStrokePoint=type==="end"?null:point;
+  if(type==="end")state.activeStrokeStyle=null;
   if(!state.room)return;
   state.drawQueue.push(payload);
+  persistDrawQueue();
   drainDrawQueue();
+}
+function drawOutboxKey(roomId,roundNo){
+  return "qq-draw-outbox:"+String(roomId)+":"+String(roundNo);
+}
+function removeDrawOutbox(roomId,roundNo){
+  try{localStorage.removeItem(drawOutboxKey(roomId,roundNo));}
+  catch(error){console.warn("QQ Draw outbox cleanup:",error);}
+}
+function persistDrawQueue(){
+  if(!state.roomId||!state.room?.round_no)return;
+  try{
+    const key=drawOutboxKey(state.roomId,state.room.round_no);
+    if(state.drawQueue.length)localStorage.setItem(key,JSON.stringify(state.drawQueue));
+    else localStorage.removeItem(key);
+  }catch(error){console.warn("QQ Draw outbox save:",error);}
+}
+function restorePendingDrawQueue(){
+  if(!state.roomId||!state.room)return;
+  const roundNo=state.room.round_no;
+  if(state.room.status!=="playing"||!isArtist()){
+    removeDrawOutbox(state.roomId,roundNo);
+    return;
+  }
+  let stored=[];
+  try{stored=JSON.parse(localStorage.getItem(drawOutboxKey(state.roomId,roundNo))||"[]");}
+  catch{stored=[];}
+  if(!Array.isArray(stored)){removeDrawOutbox(state.roomId,roundNo);return;}
+  const roundId=currentRoundId();
+  state.drawQueue=stored.filter((payload)=>
+    payload&&payload.roundId===roundId&&payload.playerId===state.profile.id&&
+    ["begin","move","end"].includes(payload.type)&&
+    Number.isSafeInteger(Number(payload.sequence))&&Number(payload.sequence)>0
+  ).sort((a,b)=>Number(a.sequence)-Number(b.sequence));
+  for(const payload of state.drawQueue){
+    const sequence=Number(payload.sequence);
+    if(!state.drawEvents.some((item)=>Number(item.sequence)===sequence)){
+      state.drawEvents.push({
+        roundId:payload.roundId,playerId:payload.playerId,type:payload.type,
+        sequence,strokeId:Number(payload.strokeId),payload
+      });
+    }
+    state.nextSequence=Math.max(state.nextSequence,sequence+1);
+  }
+  state.drawEvents.sort((a,b)=>Number(a.sequence)-Number(b.sequence));
+  persistDrawQueue();
+  if(state.drawQueue.length){
+    state.drawBlocked=false;
+    renderCanvas();
+    drainDrawQueue();
+  }
 }
 async function drainDrawQueue(){
   if(state.sendingDraw||state.drawBlocked||!state.roomId)return;
+  if(!state.room||state.room.status!=="playing"||!isArtist()){
+    state.drawQueue=[];persistDrawQueue();return;
+  }
   state.sendingDraw=true;
   try{
     while(state.drawQueue.length){
@@ -432,28 +526,30 @@ async function drainDrawQueue(){
       await rpc("qq_party_add_stroke",{p_room_id:state.roomId,p_stroke:payload});
       state.drawQueue.shift();
       state.lastServerSequence=Math.max(state.lastServerSequence,Number(payload.sequence));
+      persistDrawQueue();
     }
   }catch(error){
     state.drawBlocked=true;
-    toast("Штрих сохранён локально. Проверь соединение: "+friendlyError(error));
+    persistDrawQueue();
+    toast("Штрих сохранён на этом устройстве и будет повторён после восстановления связи: "+friendlyError(error));
   }finally{state.sendingDraw=false;}
 }
 async function syncDrawHistory(){
   if(!state.roomId||!state.room||state.room.game!=="crocodile")return;
   try{
     let more=true;
+    let canvasChanged=false;
     while(more){
       const data=await rpc("qq_party_get_draw_events",{p_room_id:state.roomId,p_after_sequence:state.lastServerSequence});
       if(Number(data.round_no)!==Number(state.room.round_no)){
         state.drawRound=data.round_no;state.drawEvents=[];state.lastServerSequence=0;state.nextSequence=1;
-        more=true;continue;
+        state.activeStrokeId=null;state.activeStrokePoint=null;state.activeStrokeStyle=null;
+        canvasChanged=true;more=true;continue;
       }
       const events=Array.isArray(data.events)?data.events:[];
       for(const item of events){
         const event={
-          roundId:item.roundId,
-          playerId:item.playerId,
-          type:item.type,
+          roundId:item.roundId,playerId:item.playerId,type:item.type,
           sequence:Number(item.sequence),
           strokeId:item.strokeId===null?null:Number(item.strokeId),
           payload:item.payload||{}
@@ -464,16 +560,23 @@ async function syncDrawHistory(){
           if(result.reason==="SEQUENCE_GAP")throw new Error("DRAW_SEQUENCE_GAP");
           if(result.reason==="SEQUENCE_CONFLICT")throw new Error("DRAW_SEQUENCE_CONFLICT");
         }
-        if(result.accepted&&!result.duplicate)state.drawEvents=result.events;
+        if(result.accepted&&!result.duplicate){
+          state.drawEvents=result.events;
+          canvasChanged=true;
+        }
         state.lastServerSequence=Math.max(state.lastServerSequence,Number(event.sequence));
       }
       state.nextSequence=Math.max(state.nextSequence,state.lastServerSequence+1);
       more=Boolean(data.has_more);
       if(!events.length)more=false;
     }
-    state.drawBlocked=false;
-    if(state.drawQueue.length)drainDrawQueue();
-    renderCanvas();
+    if(state.room.status==="playing"&&isArtist()){
+      state.drawBlocked=false;
+      if(state.drawQueue.length)drainDrawQueue();
+    }else if(state.drawQueue.length){
+      state.drawQueue=[];persistDrawQueue();
+    }
+    if(canvasChanged)renderCanvas();
   }catch(error){
     if(String(error?.message||"").includes("DRAW_SEQUENCE_GAP"))console.warn("QQ Draw cursor gap; request full replay on next poll.");
     else console.warn("QQ Draw event recovery:",error);
